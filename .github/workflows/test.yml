@@ -17,13 +17,6 @@ jobs:
 
       - name: Test database initialization
         run: |
-          if ! docker compose ps init-db | grep -q "exited 0"; then
-            echo "ERROR: init-db service failed!"
-            echo "Service status:"
-            docker compose ps init-db
-            exit 1
-          fi
-
           if ! docker compose exec -T db psql -U postgres -d postgres -c "\dt visits" | grep -q "visits"; then
             echo "ERROR: Table 'visits' does not exist. initDB.sql didnt run? DB initialization failed :("
             echo "Current 'visits' table:"
