@@ -9,9 +9,27 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=password
     depends_on:
+      init-db:
+        condition: service_completed_successfully
+    restart: on-failure
+
+  init-db:
+    image: postgres:13
+    environment:
+      - PGPASSWORD=password
+    volumes:
+      - ./db/initDB.sql:/initDB.sql
+    command: >
+      sh -c "echo 'Waiting for database to be ready...';
+          until pg_isready -h db; do
+            sleep 2;
+          done;
+          echo 'Running db init script...';
+          psql -h db -U postgres -d postgres -f /initDB.sql;
+          echo 'Initialization completed successfully.'"
+    depends_on:
       db:
         condition: service_healthy
-    restart: on-failure
 
   db:
     image: postgres:13
@@ -21,7 +39,6 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/initDB.sql:/docker-entrypoint-initdb.d/initDB.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s
