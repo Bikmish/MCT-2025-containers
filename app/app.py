@@ -15,6 +15,10 @@ def get_db_connection():
         password=os.getenv('DB_PASSWORD', 'password')
     )
 
+@app.route('/')
+def index():
+    return 'Hello! Use /ping and /visits endpoints.'
+
 @app.route('/ping')
 def ping():
     ip = request.remote_addr
