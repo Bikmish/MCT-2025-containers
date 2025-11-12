@@ -60,6 +60,23 @@ services:
     volumes:
       - redis_data:/data
 
+  tests:
+    build: 
+      context: ./app
+      dockerfile: Dockerfile.test
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
 volumes:
   postgres_data:
   redis_data:
