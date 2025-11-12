@@ -25,6 +25,20 @@ jobs:
           fi
           echo "SUCCESS: Database initialization verified successfully!"
 
+      - name: Test Redis connection
+        run: |
+            timeout=30
+            while ! docker compose exec -T redis redis-cli ping | grep -q "PONG"; do
+                ((timeout--))
+                if [ $timeout -eq 0 ]; then
+                echo "Redis service failed to start"
+                docker compose logs redis
+                exit 1
+                fi
+                sleep 1
+            done
+        echo "SUCCESS: Redis service is running and responding!"
+
       - name: Wait for web to be ready
         run: |
           timeout=60
