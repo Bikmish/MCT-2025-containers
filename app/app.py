@@ -8,7 +8,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
+DEV_MODE = os.getenv('APP_ENV') == 'dev'
+
 def get_db_connection():
+    if DEV_MODE:
+        return None
     return psycopg2.connect(
         host=os.getenv('DB_HOST', 'db'),
         database=os.getenv('DB_NAME', 'postgres'),
@@ -17,6 +21,8 @@ def get_db_connection():
     )
 
 def get_redis_connection():
+    if DEV_MODE:
+        return None
     return redis.Redis(
         host=os.getenv('REDIS_HOST', 'redis'),
         port=int(os.getenv('REDIS_PORT', 6379)),
@@ -24,6 +30,9 @@ def get_redis_connection():
     )
 
 def get_visits_count():
+    if DEV_MODE:
+        return -1
+    
     try:
         r = get_redis_connection()
         cached_count = r.get('visits_count')
@@ -43,7 +52,10 @@ def get_visits_count():
     update_visits_cache(count)
     return count
 
-def update_visits_cache(count = -1):
+def update_visits_cache(count=-1):
+    if DEV_MODE:
+        return
+    
     try:
         if count == -1:
             with get_db_connection() as conn:
@@ -63,22 +75,26 @@ def index():
 
 @app.route('/ping')
 def ping():
+    if DEV_MODE:
+        return 'pong'
+    
     ip = request.remote_addr    
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute('INSERT INTO visits (ip) VALUES (%s)', (ip,))    
     update_visits_cache()
-
     return 'pong'
 
 @app.route('/visits')
 def visits():
-    """try get from cache first, if failed - from db"""
     count = get_visits_count()
     return str(count)
 
 @app.route('/visits/db')
 def visits_db():
+    if DEV_MODE:
+        return "Direct from DB: -1"
+    
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute('SELECT COUNT(*) FROM visits')
@@ -87,6 +103,9 @@ def visits_db():
 
 @app.route('/visits/cache')
 def visits_cache():
+    if DEV_MODE:
+        return "From cache: -1"
+    
     try:
         r = get_redis_connection()
         cached_count = r.get('visits_count')
@@ -99,7 +118,9 @@ def visits_cache():
 
 @app.route('/cache/clear')
 def clear_cache():
-    """for testing"""
+    if DEV_MODE:
+        return "Cache cleared (dev mode)"
+    
     try:
         r = get_redis_connection()
         r.delete('visits_count')
