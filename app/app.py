@@ -1,5 +1,6 @@
 from flask import Flask, request
 import psycopg2
+import redis
 import os
 import logging
 
@@ -15,25 +16,96 @@ def get_db_connection():
         password=os.getenv('DB_PASSWORD', 'password')
     )
 
+def get_redis_connection():
+    return redis.Redis(
+        host=os.getenv('REDIS_HOST', 'redis'),
+        port=int(os.getenv('REDIS_PORT', 6379)),
+        decode_responses=True
+    )
+
+def get_visits_count():
+    try:
+        r = get_redis_connection()
+        cached_count = r.get('visits_count')
+        
+        if cached_count is not None:
+            logger.info("Cache hit!")
+            return int(cached_count)
+    except Exception as e:
+        logger.warning(f"Redis unavailable: {e}")
+    
+    logger.info("Cache miss :( Getting from database...")
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT COUNT(*) FROM visits')
+            count = cur.fetchone()[0]
+    
+    update_visits_cache(count)
+    return count
+
+def update_visits_cache(count = -1):
+    try:
+        if count == -1:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT COUNT(*) FROM visits')
+                    count = cur.fetchone()[0]
+        
+        r = get_redis_connection()
+        r.set('visits_count', count, ex=300)
+        logger.info("Cache updated")
+    except Exception as e:
+        logger.warning(f"Failed to update cache: {e}")
+
 @app.route('/')
 def index():
     return 'Hello! Use /ping and /visits endpoints.'
 
 @app.route('/ping')
 def ping():
-    ip = request.remote_addr
+    ip = request.remote_addr    
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute('INSERT INTO visits (ip) VALUES (%s)', (ip,))
+            cur.execute('INSERT INTO visits (ip) VALUES (%s)', (ip,))    
+    update_visits_cache()
+
     return 'pong'
 
 @app.route('/visits')
 def visits():
+    """try get from cache first, if failed - from db"""
+    count = get_visits_count()
+    return str(count)
+
+@app.route('/visits/db')
+def visits_db():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute('SELECT COUNT(*) FROM visits')
             count = cur.fetchone()[0]
-    return str(count)
+    return f"Direct from DB: {count}"
+
+@app.route('/visits/cache')
+def visits_cache():
+    try:
+        r = get_redis_connection()
+        cached_count = r.get('visits_count')
+        if cached_count is not None:
+            return f"From cache: {cached_count}"
+        else:
+            return "Cache is empty"
+    except Exception as e:
+        return f"Cache error: {e}"
+
+@app.route('/cache/clear')
+def clear_cache():
+    """for testing"""
+    try:
+        r = get_redis_connection()
+        r.delete('visits_count')
+        return "Cache cleared"
+    except Exception as e:
+        return f"Error clearing cache: {e}"
 
 if __name__ == '__main__':
     logger.info("Starting flask app")
